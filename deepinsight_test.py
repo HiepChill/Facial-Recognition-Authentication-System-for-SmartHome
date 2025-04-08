@@ -14,7 +14,7 @@ if not os.path.exists(database_path):
 # app = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'])
 # app.prepare(ctx_id=0)
 # Khởi tạo mô hình nhận diện khuôn mặt GPU
-app = FaceAnalysis(name='buffalo_l', providers=['OpenVINOExecutionProvider'])
+app = FaceAnalysis(name='buffalo_l', providers=['DmlExecutionProvider'])
 app.prepare(ctx_id=0)
 
 
