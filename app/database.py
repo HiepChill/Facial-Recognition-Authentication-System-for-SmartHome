@@ -2,7 +2,7 @@ import sqlite3
 import os
 import shutil
 import csv
-from .config import DB_PATH, DATASET_DIR, SECURITY_LOG_DIR
+from .config import DB_PATH
 from datetime import datetime
 
 
