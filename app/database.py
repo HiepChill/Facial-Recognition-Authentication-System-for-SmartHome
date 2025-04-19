@@ -157,3 +157,58 @@ def get_all_users():
     users = [dict(row) for row in cursor.fetchall()]
     conn.close()
     return users
+
+def get_user_details(user_id):
+    """Lấy thông tin chi tiết của một người dùng"""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("""
+    SELECT u.id, u.name, u.notes, u.created_at, u.updated_at,
+    COUNT(f.id) as image_count
+    FROM users u
+    LEFT JOIN face_images f ON u.id = f.user_id
+    WHERE u.id = ?
+    GROUP BY u.id
+    """, (user_id,))
+    user = cursor.fetchone()
+    if user:
+        user_dict = dict(user)
+        cursor.execute("""
+        SELECT id, image_path, created_at
+        FROM face_images
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+        """, (user_id,))
+        user_dict['face_images'] = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return user_dict
+    conn.close()
+    return None
+
+def get_user_face_images(user_id):
+    """Lấy danh sách ảnh khuôn mặt của người dùng"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+    SELECT id, image_path, created_at
+    FROM face_images
+    WHERE user_id = ?
+    ORDER BY created_at DESC
+    """, (user_id,))
+    face_images = [{"id": row[0], "image_path": row[1], "created_at": row[2]} for row in cursor.fetchall()]
+    conn.close()
+    return face_images
+
+def get_user_face_data():
+    """Lấy thông tin người dùng và đường dẫn ảnh khuôn mặt"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+    SELECT u.id, u.name, f.image_path 
+    FROM users u
+    JOIN face_images f ON u.id = f.user_id
+    ''')
+    results = cursor.fetchall()
+    conn.close()
+    return results
