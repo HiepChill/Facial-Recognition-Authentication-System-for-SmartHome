@@ -10,11 +10,11 @@ import os
 import numpy as np
 import shutil
 import uuid
-from app.config import DATASET_DIR, TEMP_DIR
+from app.config import DATASET_DIR
 from app.database import (
     setup_database, check_user_exists, add_user, add_face_image, 
     get_all_users, get_user_face_images, get_user_face_data, get_user_details,
-    update_user, delete_user, delete_face_image, get_detection_history
+    update_user, delete_user, delete_face_image
 )
 
 
