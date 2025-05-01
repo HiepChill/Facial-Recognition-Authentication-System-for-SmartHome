@@ -2,9 +2,8 @@ import sqlite3
 import os
 import shutil
 import csv
-from .config import DB_PATH, DATASET_DIR
+from .config import DB_PATH, DATASET_DIR, SECURITY_LOG_DIR
 from datetime import datetime
-
 
 def setup_database():
     """Thiết lập cơ sở dữ liệu"""
@@ -212,3 +211,55 @@ def get_user_face_data():
     results = cursor.fetchall()
     conn.close()
     return results
+
+def log_detection(user_id, name, is_known, confidence, image_path=None, notification_sent=False):
+    """Ghi lại sự kiện nhận diện vào cơ sở dữ liệu"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+    INSERT INTO detection_history 
+    (user_id, name, is_known, confidence, image_path, notification_sent) 
+    VALUES (?, ?, ?, ?, ?, ?)
+    """, (user_id, name, is_known, confidence, image_path, notification_sent))
+    conn.commit()
+    conn.close()
+    
+    # Ghi vào file CSV theo ngày
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    csv_path = os.path.join(SECURITY_LOG_DIR, f"detection_history_{date_str}.csv")
+    file_exists = os.path.exists(csv_path)
+    with open(csv_path, 'a', newline='') as csvfile:
+        fieldnames = ['timestamp', 'user_id', 'name', 'is_known', 'confidence', 'notification_sent']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        if not file_exists:
+            writer.writeheader()
+        writer.writerow({
+            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            'user_id': user_id,
+            'name': name,
+            'is_known': is_known,
+            'confidence': confidence,
+            'notification_sent': notification_sent
+        })
+    return True
+
+def get_detection_history(date: str):
+    """Lấy lịch sử nhận diện theo ngày"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        start_date = f"{date} 00:00:00"
+        end_date = f"{date} 23:59:59"
+        cursor.execute("""
+        SELECT * FROM detection_history 
+        WHERE timestamp BETWEEN ? AND ? 
+        ORDER BY timestamp DESC
+        """, (start_date, end_date))
+        history = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return history
+    except sqlite3.Error as e:
+        raise Exception(f"Lỗi truy vấn cơ sở dữ liệu: {str(e)}")
+    except Exception as e:
+        raise Exception(f"Lỗi không xác định: {str(e)}")
