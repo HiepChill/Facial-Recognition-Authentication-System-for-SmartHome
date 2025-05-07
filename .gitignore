@@ -1,0 +1,5 @@
+/app/config.py
+*.db
+*.pickle
+/temp/
+/dataset/
