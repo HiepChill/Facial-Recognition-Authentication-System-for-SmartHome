@@ -14,9 +14,9 @@ from app.config import DATASET_DIR
 from app.database import (
     setup_database, check_user_exists, add_user, add_face_image, 
     get_all_users, get_user_face_images, get_user_face_data, get_user_details,
-    update_user, delete_user, delete_face_image
+    update_user, delete_user, delete_face_image, get_detection_history
 )
-
+from app.face_recognition import load_face_database, face_analyzer
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -168,7 +168,28 @@ async def remove_face(image_id: int = Path(...)):
     face_database = load_face_database(user_face_data)
     return {"status": "success", "message": message}
 
-
+@app.get("/recognition/history")
+async def get_recognition_history(date: str = Query(..., description="Ngày cần truy vấn (YYYY-MM-DD)")):
+    try:
+        # Nếu không cung cấp ngày, sử dụng ngày hiện tại
+        if not date:
+            date = datetime.now().strftime("%Y-%m-%d")
+            
+        history = get_detection_history(date=date)
+        
+        # Kiểm tra xem history có phải là danh sách không
+        if not isinstance(history, list):
+            history = []
+            
+        return {"status": "success", "history": history, "total": len(history), "date": date}
+    except Exception as e:
+        return {
+            "status": "error", 
+            "message": f"Lỗi khi truy vấn lịch sử nhận diện: {str(e)}",
+            "history": [],
+            "total": 0,
+            "date": date
+        }
 
 @app.get("/")
 async def root():
