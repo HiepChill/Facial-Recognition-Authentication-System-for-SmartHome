@@ -3,6 +3,6 @@ __pycache__/
 
 app/config.py
 *.db
-*.pickle\
+*.pickle
 temp/
 dataset/
