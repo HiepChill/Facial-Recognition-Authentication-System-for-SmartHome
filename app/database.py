@@ -229,7 +229,7 @@ def log_detection(user_id, name, is_known, confidence, image_path=None, notifica
     csv_path = os.path.join(SECURITY_LOG_DIR, f"detection_history_{date_str}.csv")
     file_exists = os.path.exists(csv_path)
     with open(csv_path, 'a', newline='') as csvfile:
-        fieldnames = ['timestamp', 'user_id', 'name', 'is_known', 'confidence', 'notification_sent']
+        fieldnames = ['timestamp', 'user_id', 'name', 'notification_sent']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         if not file_exists:
             writer.writeheader()
@@ -237,8 +237,6 @@ def log_detection(user_id, name, is_known, confidence, image_path=None, notifica
             'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             'user_id': user_id,
             'name': name,
-            'is_known': is_known,
-            'confidence': confidence,
             'notification_sent': notification_sent
         })
     return True
@@ -249,17 +247,48 @@ def get_detection_history(date: str):
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        start_date = f"{date} 00:00:00"
-        end_date = f"{date} 23:59:59"
+        
+        
         cursor.execute("""
-        SELECT * FROM detection_history 
-        WHERE timestamp BETWEEN ? AND ? 
+        SELECT timestamp, user_id, name, notification_sent 
+        FROM detection_history 
+        WHERE DATE(timestamp) = ? 
         ORDER BY timestamp DESC
-        """, (start_date, end_date))
-        history = [dict(row) for row in cursor.fetchall()]
+        """, (date,))
+        
+        history = []
+        
+        for row in cursor.fetchall():
+            row_dict = dict(row)
+            # Chuyển đổi timestamp thành string để tránh lỗi JSON serialization
+            if 'timestamp' in row_dict and row_dict['timestamp'] is not None:
+                row_dict['timestamp'] = str(row_dict['timestamp'])
+            
+            history.append(row_dict)
+            
         conn.close()
+        
+        # Nếu không có dữ liệu, thử đọc từ file CSV
+        if not history:
+            csv_path = os.path.join(SECURITY_LOG_DIR, f"detection_history_{date}.csv")
+            if os.path.exists(csv_path):
+                with open(csv_path, 'r', newline='', encoding='utf-8') as csvfile:
+                    reader = csv.DictReader(csvfile)
+                    # Chỉ lấy 4 cột cần thiết từ CSV
+                    for row in reader:
+                        filtered_row = {
+                            'timestamp': row.get('timestamp', ''),
+                            'user_id': row.get('user_id', ''),
+                            'name': row.get('name', ''),
+                            'notification_sent': row.get('notification_sent', '')
+                        }
+                        history.append(filtered_row)
+        
         return history
     except sqlite3.Error as e:
-        raise Exception(f"Lỗi truy vấn cơ sở dữ liệu: {str(e)}")
+        # Ghi log lỗi và trả về danh sách rỗng thay vì ném ngoại lệ
+        print(f"Database error: {str(e)}")
+        return []
     except Exception as e:
-        raise Exception(f"Lỗi không xác định: {str(e)}")
+        print(f"Error in get_detection_history: {str(e)}")
+        return []

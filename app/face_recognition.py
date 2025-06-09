@@ -2,8 +2,7 @@ import cv2
 import numpy as np
 import os
 import uuid
-from facenet_pytorch import MTCNN, InceptionResnetV1
-import torch
+import insightface
 from sklearn.metrics.pairwise import cosine_similarity
 from .config import FACE_RECOGNITION_THRESHOLD, TEMP_DIR, NOTIFICATION_INTERVAL_KNOWN, NOTIFICATION_INTERVAL_UNKNOWN
 from .database import log_detection
@@ -16,65 +15,47 @@ recognition_lock = threading.Lock()
 last_notification_times = {}  # {user_key: timestamp}
 
 def initialize_face_analyzer():
-    """Khởi tạo FaceNet với GPU nếu có"""
+    """Khởi tạo InsightFace với GPU nếu có"""
     try:
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        # Tăng margin để cắt nhiều hơn quanh khuôn mặt
-        mtcnn = MTCNN(
-            image_size=160,  # Giữ kích thước 160x160 cho chất lượng tốt
-            margin=20,       # Tăng margin để có nhiều thông tin quanh khuôn mặt
-            min_face_size=40,  # Đặt kích thước mặt tối thiểu
-            thresholds=[0.6, 0.7, 0.9],  # Tăng ngưỡng cho độ chính xác cao hơn
-            factor=0.709,     # Scaling factor tối ưu
-            post_process=True,  # Thực hiện xử lý sau phát hiện
-            device=device
+        # Khởi tạo InsightFace app
+        app = insightface.app.FaceAnalysis(
+            providers=['DmlExecutionProvider', 'CPUExecutionProvider', 'CUDAExecutionProvider']
         )
-        # Sử dụng model vggface2 (cân bằng giữa tốc độ và chính xác)
-        model = InceptionResnetV1(pretrained='vggface2').to(device).eval()
-        print(f"Khởi tạo FaceNet thành công (sử dụng {device})")
-        return mtcnn, model
+        app.prepare(ctx_id=0, det_size=(640, 640))
+        print("Khởi tạo InsightFace thành công")
+        return app
     except Exception as e:
-        print(f"Lỗi khởi tạo FaceNet: {str(e)}")
-        raise RuntimeError("Không thể khởi tạo FaceNet")
+        print(f"Lỗi khởi tạo InsightFace: {str(e)}")
+        raise RuntimeError("Không thể khởi tạo InsightFace")
 
-mtcnn, face_model = initialize_face_analyzer()
+face_app = initialize_face_analyzer()
 face_database = {}
 
 def load_face_database(user_face_data):
     """Tải dữ liệu khuôn mặt từ cơ sở dữ liệu vào bộ nhớ"""
     face_db = {}
     user_info = {}
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     for user_id, name, image_path in user_face_data:
         if os.path.exists(image_path):
             img = cv2.imread(image_path)
             if img is not None:
-                img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                # Phát hiện khuôn mặt trước để đảm bảo chất lượng
-                boxes, probs = mtcnn.detect(img_rgb)
-                if boxes is not None and len(boxes) > 0:
+                # InsightFace sử dụng BGR format trực tiếp
+                faces = face_app.get(img)
+                
+                if faces and len(faces) > 0:
                     # Sử dụng khuôn mặt có diện tích lớn nhất nếu phát hiện nhiều khuôn mặt
                     max_area = 0
-                    max_box_idx = 0
-                    for i, box in enumerate(boxes):
-                        x1, y1, x2, y2 = box
-                        area = (x2 - x1) * (y2 - y1)
+                    best_face = None
+                    for face in faces:
+                        bbox = face.bbox
+                        area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
                         if area > max_area:
                             max_area = area
-                            max_box_idx = i
+                            best_face = face
                     
-                    # Cắt khuôn mặt và sử dụng MTCNN để xử lý trực tiếp
-                    box = boxes[max_box_idx]
-                    x1, y1, x2, y2 = [int(b) for b in box]
-                    face_img = img_rgb[y1:y2, x1:x2]
-                    
-                    # Sử dụng MTCNN để xử lý khuôn mặt đã cắt
-                    face_tensor = mtcnn(face_img)
-                    if face_tensor is not None:
-                        face_tensor = face_tensor.unsqueeze(0).to(device)
-                        embedding = face_model(face_tensor)
-                        embedding = embedding.detach().cpu().numpy().flatten()
+                    if best_face is not None:
+                        embedding = best_face.embedding
                         
                         user_key = f"{user_id}_{name}"
                         if user_key not in face_db:
@@ -131,50 +112,23 @@ def process_frame(frame, face_database):
     display_frame = frame.copy()
     recognized_users = []
     
-    # Tạo từ điển lưu kết quả nhận diện cho các khuôn mặt
-    face_results = {}
-    
     try:
-        # Chuyển ảnh từ BGR sang RGB cho MTCNN
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        # InsightFace xử lý trực tiếp với BGR format
+        faces = face_app.get(frame)
         
-        # Phát hiện khuôn mặt để lấy tọa độ bbox
-        boxes, probs = mtcnn.detect(frame_rgb)
-        if boxes is None or len(boxes) == 0:
+        if not faces or len(faces) == 0:
             return display_frame, recognized_users
-            
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
-        for i, box in enumerate(boxes):
-            if probs[i] < 0.9:  # Lọc các khuôn mặt có xác suất thấp
-                continue
-                
-            # Tạo key duy nhất cho mỗi khuôn mặt dựa trên vị trí
-            x1, y1, x2, y2 = [int(b) for b in box]
-            face_key = f"{x1}_{y1}_{x2}_{y2}"
-            
-            # Cắt và xử lý khuôn mặt
-            face_img = frame_rgb[y1:y2, x1:x2]
-            
+        for face in faces:
             try:
-                # Sử dụng MTCNN trực tiếp thay vì phương thức align
-                face_tensor = mtcnn(face_img)
-                if face_tensor is None:
-                    continue
-                    
-                face_tensor = face_tensor.unsqueeze(0).to(device)
-                embedding = face_model(face_tensor)
-                face_embedding = embedding.detach().cpu().numpy().flatten()
+                # Lấy thông tin khuôn mặt
+                bbox = face.bbox.astype(int)
+                embedding = face.embedding
+                
+                x1, y1, x2, y2 = bbox
                 
                 # Nhận diện khuôn mặt
-                match_info, similarity = recognize_face(face_embedding, face_database)
-                
-                # Lưu kết quả vào từ điển
-                face_results[face_key] = {
-                    'box': (x1, y1, x2, y2),
-                    'match_info': match_info,
-                    'similarity': similarity
-                }
+                match_info, similarity = recognize_face(embedding, face_database)
                 
                 # Vẽ kết quả
                 draw_recognition_result(display_frame, x1, y1, x2, y2, 

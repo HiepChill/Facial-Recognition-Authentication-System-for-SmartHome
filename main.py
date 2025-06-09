@@ -10,25 +10,26 @@ import os
 import numpy as np
 import shutil
 import uuid
-from app.config import DATASET_DIR
+from app.config import DATASET_DIR, TEMP_DIR
 from app.database import (
     setup_database, check_user_exists, add_user, add_face_image, 
     get_all_users, get_user_face_images, get_user_face_data, get_user_details,
     update_user, delete_user, delete_face_image, get_detection_history
 )
-from app.face_recognition import load_face_database, face_analyzer
+from app.face_recognition import face_app, face_database, load_face_database, process_frame
+from app.camera import CameraManager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global face_database
     setup_database()
-    
-
-app = FastAPI(
-    title="Smart Home Security System", 
-    lifespan=lifespan, 
-    description="Hệ thống an ninh nhà thông minh sử dụng nhận diện khuôn mặt và thông báo Telegram."
-)
+    user_face_data = get_user_face_data()
+    face_database = load_face_database(user_face_data)
+    print(f"Đã tải {len(face_database)} người dùng vào CSDL")
+    yield
+    camera_manager = CameraManager.get_instance()
+    camera_manager.release_camera()
+    print("Ứng dụng đang tắt: Đã giải phóng tài nguyên camera")
 
 app = FastAPI(
     title="Smart Home Security System", 
@@ -38,11 +39,14 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["*"],        # Cho phép tất cả domain truy cập
+    allow_credentials=True,     # Cho phép gửi cookie / header Authorization
+    allow_methods=["*"],        # Cho phép tất cả phương thức HTTP (GET, POST, PUT, DELETE, ...)
+    allow_headers=["*"],        # Cho phép tất cả loại header từ client gửi lên
 )
+
+app.mount("/images", StaticFiles(directory=DATASET_DIR), name="images")
+app.mount("/temp", StaticFiles(directory=TEMP_DIR), name="temp")
 
 @app.post("/users")
 async def create_user(
@@ -111,35 +115,23 @@ async def add_face(
         try:
             content = await face_image.read()
             img = cv2.imdecode(np.frombuffer(content, np.uint8), cv2.IMREAD_COLOR)
-            faces = face_analyzer.get(img)
-            if not faces:
+            
+            # Sử dụng InsightFace để phát hiện khuôn mặt (chỉ để validation)
+            faces = face_app.get(img)
+            if not faces or len(faces) == 0:
                 results.append({"filename": face_image.filename, "status": "error", "message": "Không tìm thấy khuôn mặt"})
                 continue
+
+            # Tạo filename với format ID_ten_001
+            user_name = user['name']
             
-            if len(faces) > 1:
-                max_area = 0
-                max_face_idx = 0
-                for i, face in enumerate(faces):
-                    bbox = face.bbox.astype(int)
-                    area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
-                    if area > max_area:
-                        max_area = area
-                        max_face_idx = i
-                face = faces[max_face_idx]
-                bbox = face.bbox.astype(int)
-                left, top, right, bottom = bbox[0], bbox[1], bbox[2], bbox[3]
-                padding = 50
-                height, width = img.shape[:2]
-                left = max(0, left - padding)
-                top = max(0, top - padding)
-                right = min(width, right + padding)
-                bottom = min(height, bottom + padding)
-                img = img[top:bottom, left:right]
+            # Đếm số ảnh hiện có của user để tạo số thứ tự
+            existing_images = get_user_face_images(user_id)
+            next_number = len(existing_images) + 1
             
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"{user_id}_{timestamp}_{uuid.uuid4().hex[:8]}.jpg"
+            filename = f"{user_id}_{user_name}_{next_number:03d}.jpg"
             image_path = os.path.join(user_folder, filename)
-            cv2.imwrite(image_path, img)
+            cv2.imwrite(image_path, img) 
             add_face_image(user_id, image_path)
             results.append({"filename": face_image.filename, "status": "success", "image_path": image_path})
         except Exception as e:
@@ -168,8 +160,30 @@ async def remove_face(image_id: int = Path(...)):
     face_database = load_face_database(user_face_data)
     return {"status": "success", "message": message}
 
+def generate_frames():
+    camera_manager = CameraManager.get_instance()
+    camera = camera_manager.get_camera()
+    while True:
+        success, frame = camera_manager.get_frame()
+        if not success:
+            continue
+        global face_database
+        processed_frame, recognized_users = process_frame(frame, face_database)
+        ret, buffer = cv2.imencode('.jpg', processed_frame)
+        if not ret:
+            continue
+        frame_bytes = buffer.tobytes()
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+
+@app.get("/camera/stream")
+async def video_feed():
+    return StreamingResponse(generate_frames(), media_type="multipart/x-mixed-replace; boundary=frame")
+
+# Xóa endpoint /camera/snapshot
+
 @app.get("/recognition/history")
-async def get_recognition_history(date: str = Query(..., description="Ngày cần truy vấn (YYYY-MM-DD)")):
+async def get_recognition_history(date: str = Query(None, description="Ngày cần truy vấn (YYYY-MM-DD)")):
     try:
         # Nếu không cung cấp ngày, sử dụng ngày hiện tại
         if not date:
@@ -183,12 +197,14 @@ async def get_recognition_history(date: str = Query(..., description="Ngày cầ
             
         return {"status": "success", "history": history, "total": len(history), "date": date}
     except Exception as e:
+        # Sử dụng ngày hiện tại nếu có lỗi với date
+        current_date = datetime.now().strftime("%Y-%m-%d")
         return {
             "status": "error", 
             "message": f"Lỗi khi truy vấn lịch sử nhận diện: {str(e)}",
             "history": [],
             "total": 0,
-            "date": date
+            "date": date if date else current_date
         }
 
 @app.get("/")
