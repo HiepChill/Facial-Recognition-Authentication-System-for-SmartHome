@@ -1,0 +1,18 @@
+[
+    {
+        "model_name": "InsightFace",
+        "init_time": 13.15125560760498,
+        "total_images": 0,
+        "true_positives": 0,
+        "true_negatives": 0,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "processing_time": 0.0,
+        "accuracy": 0.0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1_score": 0.0,
+        "avg_processing_time": 0.0,
+        "threshold": 0.6
+    }
+]
