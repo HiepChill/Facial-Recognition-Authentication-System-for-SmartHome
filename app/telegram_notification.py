@@ -75,3 +75,25 @@ def can_send_notification(person_id, is_known=True):
         # Cập nhật thời gian thông báo cuối cùng
         last_notification_time[person_id] = current_time
         return True
+
+def notify_recognized_person(name, user_id, confidence, image_path=None):
+    """Thông báo về người được nhận diện"""
+    if can_send_notification(user_id, is_known=True):
+        message = f"✅ <b>Người Được Nhận Diện</b>\nTên: {name}\nID: {user_id}\nĐộ Chính Xác: {confidence:.2f}\nThời Gian: {datetime.now().strftime('%H:%M:%S')}"
+        return send_telegram_notification(message, image_path)
+    return False
+
+def notify_unknown_person(image_path=None):
+    """Thông báo về người lạ"""
+    # Với người lạ, dùng timestamp làm ID để giới hạn thông báo
+    unknown_id = "unknown_person"
+    
+    if can_send_notification(unknown_id, is_known=False):
+        message = f"⚠️ <b>CẢNH BÁO: Phát Hiện Người Lạ!</b>\nThời Gian: {datetime.now().strftime('%H:%M:%S')}"
+        return send_telegram_notification(message, image_path)
+    return False
+
+def log_security_event(event_type, details):
+    """Ghi lại sự kiện bảo mật vào file"""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    logging.info(f"[{event_type}] {details}")
