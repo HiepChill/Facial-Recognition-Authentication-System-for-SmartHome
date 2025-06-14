@@ -212,7 +212,7 @@ async def root():
     return {
         "name": "Smart Home Security System",
         "version": "1.0.0",
-        "description": "Hệ thống an ninh nhà thông minh sử dụng nhận diện khuôn mặt và thông báo Telegram.",
+        "description": "Smart Home Security System by using face recognition and sent notification to Telegram",
     }
 
 if __name__ == "__main__":
