@@ -6,3 +6,4 @@ app/config.py
 *.pickle
 temp/
 dataset/
+security_logs/
