@@ -180,7 +180,6 @@ def generate_frames():
 async def video_feed():
     return StreamingResponse(generate_frames(), media_type="multipart/x-mixed-replace; boundary=frame")
 
-# Xóa endpoint /camera/snapshot
 
 @app.get("/recognition/history")
 async def get_recognition_history(date: str = Query(None, description="Ngày cần truy vấn (YYYY-MM-DD)")):

@@ -7,3 +7,4 @@ app/config.py
 temp/
 dataset/
 security_logs/
+test.py
