@@ -274,7 +274,7 @@ def get_detection_history(date: str):
             if os.path.exists(csv_path):
                 with open(csv_path, 'r', newline='', encoding='utf-8') as csvfile:
                     reader = csv.DictReader(csvfile)
-                    # Chỉ lấy 4 cột cần thiết từ CSV
+                    
                     for row in reader:
                         filtered_row = {
                             'timestamp': row.get('timestamp', ''),

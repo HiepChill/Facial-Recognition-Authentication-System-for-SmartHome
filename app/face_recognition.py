@@ -192,9 +192,9 @@ def recognize_face(face_embedding, face_database):
         try:
             db_embedding = data["embedding"]
             
-            # Ensure embeddings are 1D arrays for cosine_similarity
+            # Đảm bảo các đặc trưng là mảng 1 chiều
             if isinstance(face_embedding, np.ndarray) and isinstance(db_embedding, np.ndarray):
-                # Reshape if needed
+                # định hình lại nếu cần
                 if face_embedding.ndim > 1:
                     face_embedding = face_embedding.flatten()
                 if db_embedding.ndim > 1:

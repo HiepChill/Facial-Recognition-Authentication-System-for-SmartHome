@@ -388,7 +388,9 @@ elif menu == "📸 Ảnh khuôn mặt":
                         col1, col2, col3 = st.columns([3, 2, 1])
                         
                         with col1:
-                            st.write(f"🖼️ Ảnh #{face['id']}")
+                            filename = os.path.basename(face['image_path']).replace('.jpg', '')
+                            st.write(f"🖼️ {filename}")
+                            #st.write(f"🖼️ Ảnh #{face['id']}")
                         
                         with col2:
                             st.write(f"📅 {face['created_at'][:16]}")

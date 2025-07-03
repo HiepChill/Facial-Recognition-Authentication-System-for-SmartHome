@@ -48,6 +48,7 @@ app.add_middleware(
 app.mount("/images", StaticFiles(directory=DATASET_DIR), name="images")
 app.mount("/temp", StaticFiles(directory=TEMP_DIR), name="temp")
 
+#Thêm người mới
 @app.post("/users")
 async def create_user(
     user_id: str = Form(...),
@@ -61,11 +62,13 @@ async def create_user(
     os.makedirs(user_folder, exist_ok=True)
     return {"status": "success", "message": "Người dùng đã được đăng ký", "user_id": user_id}
 
+#Lấy danh sách người dùng
 @app.get("/users")
 async def list_users():
     users = get_all_users()
     return {"status": "success", "users": users, "total": len(users)}
 
+#Lấy thông tin người dùng
 @app.get("/users/{user_id}")
 async def get_user(user_id: str = Path(...)):
     user = get_user_details(user_id)
@@ -73,6 +76,7 @@ async def get_user(user_id: str = Path(...)):
         raise HTTPException(status_code=404, detail="Không tìm thấy người dùng")
     return {"status": "success", "user": user}
 
+#Cập nhật thông tin người dùng
 @app.put("/users/{user_id}")
 async def update_user_info(
     user_id: str = Path(...),
@@ -86,6 +90,7 @@ async def update_user_info(
         raise HTTPException(status_code=400, detail=message)
     return {"status": "success", "message": message}
 
+#Xóa người dùng
 @app.delete("/users/{user_id}")
 async def remove_user(user_id: str = Path(...)):
     if not check_user_exists(user_id):
@@ -98,6 +103,7 @@ async def remove_user(user_id: str = Path(...)):
     face_database = load_face_database(user_face_data)
     return {"status": "success", "message": message}
 
+#Thêm ảnh khuôn mặt
 @app.post("/users/{user_id}/faces")
 async def add_face(
     user_id: str = Path(...),
@@ -143,6 +149,7 @@ async def add_face(
     
     return {"status": "success", "results": results}
 
+#Lấy danh sách ảnh khuôn mặt
 @app.get("/users/{user_id}/faces")
 async def list_faces(user_id: str = Path(...)):
     if not check_user_exists(user_id):
@@ -176,11 +183,12 @@ def generate_frames():
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
 
+#Lấy stream video
 @app.get("/camera/stream")
 async def video_feed():
     return StreamingResponse(generate_frames(), media_type="multipart/x-mixed-replace; boundary=frame")
 
-
+#Lấy lịch sử nhận diện
 @app.get("/recognition/history")
 async def get_recognition_history(date: str = Query(None, description="Ngày cần truy vấn (YYYY-MM-DD)")):
     try:
