@@ -4,11 +4,122 @@ import os
 from datetime import datetime
 import threading
 import logging
+import queue
 from .config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, NOTIFICATION_INTERVAL_KNOWN, NOTIFICATION_INTERVAL_UNKNOWN, SECURITY_LOG_DIR
 
-# Từ điển lưu thời gian thông báo cuối cùng cho mỗi người
+# Queue để xử lý thông báo tuần tự
+notification_queue = queue.Queue()
+notification_worker_running = False
 last_notification_time = {}
 notification_lock = threading.Lock()
+
+def start_notification_worker():
+    """Khởi động worker thread để xử lý queue thông báo"""
+    global notification_worker_running
+    if not notification_worker_running:
+        notification_worker_running = True
+        worker_thread = threading.Thread(target=notification_worker, daemon=True)
+        worker_thread.start()
+
+def notification_worker():
+    """Worker thread xử lý thông báo từ queue"""
+    while notification_worker_running:
+        try:
+            # Lấy thông báo từ queue (chờ tối đa 1 giây)
+            message, image_path = notification_queue.get(timeout=1)
+            
+            # Gửi thông báo
+            send_telegram_notification_sync(message, image_path)
+            
+            # Rate limiting - chờ 1 giây giữa các thông báo
+            time.sleep(1)
+            
+            notification_queue.task_done()
+        except queue.Empty:
+            continue
+        except Exception as e:
+            logging.error(f"Lỗi trong notification worker: {e}")
+
+def send_telegram_notification(message, image_path=None):
+    """Thêm thông báo vào queue"""
+    start_notification_worker()
+    notification_queue.put((message, image_path))
+
+def send_telegram_notification_sync(message, image_path=None):
+    """Gửi thông báo đồng bộ với retry mechanism"""
+    max_retries = 3
+    retry_delay = 2
+    
+    for attempt in range(max_retries):
+        try:
+            if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+                logging.error("Token bot Telegram hoặc ID chat chưa được cấu hình")
+                return False
+            
+            if image_path and os.path.exists(image_path):
+                # Gửi ảnh với caption thay vì gửi riêng biệt
+                return send_photo_with_caption(message, image_path)
+            else:
+                # Chỉ gửi tin nhắn văn bản
+                return send_text_message(message)
+                
+        except Exception as e:
+            logging.error(f"Thử lần {attempt + 1} thất bại: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(retry_delay * (attempt + 1))
+            else:
+                return False
+    
+    return False
+
+def send_photo_with_caption(message, image_path):
+    """Gửi ảnh kèm caption"""
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
+        
+        with open(image_path, 'rb') as photo:
+            files = {'photo': photo}
+            data = {
+                "chat_id": TELEGRAM_CHAT_ID,
+                "caption": message,
+                "parse_mode": "HTML"
+            }
+            
+            response = requests.post(url, data=data, files=files, timeout=30)
+            
+            if response.status_code == 200:
+                logging.info(f"Đã gửi ảnh với caption: {message}")
+                return True
+            else:
+                logging.error(f"Telegram API error: {response.status_code} - {response.text}")
+                return False
+                
+    except Exception as e:
+        logging.error(f"Lỗi gửi ảnh: {e}")
+        return False
+
+def send_text_message(message):
+    """Gửi chỉ tin nhắn văn bản"""
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        data = {
+            "chat_id": TELEGRAM_CHAT_ID,
+            "text": message,
+            "parse_mode": "HTML"
+        }
+        
+        response = requests.post(url, data=data, timeout=10)
+        
+        if response.status_code == 200:
+            logging.info(f"Đã gửi tin nhắn: {message}")
+            return True
+        else:
+            logging.error(f"Telegram API error: {response.status_code} - {response.text}")
+            return False
+            
+    except Exception as e:
+        logging.error(f"Lỗi gửi tin nhắn: {e}")
+        return False
 
 def setup_security_logs():
     """Tạo thư mục nhật ký bảo mật nếu chưa tồn tại"""
@@ -22,40 +133,6 @@ def setup_security_logs():
         format='%(asctime)s - %(levelname)s - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
-
-def send_telegram_notification(message, image_path=None):
-    """Gửi thông báo và ảnh (nếu có) qua Telegram"""
-    try:
-        # Kiểm tra cấu hình cần thiết
-        if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-            logging.error("Token bot Telegram hoặc ID chat chưa được cấu hình")
-            return False
-            
-        # Gửi tin nhắn văn bản
-        text_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        text_payload = {
-            "chat_id": TELEGRAM_CHAT_ID,
-            "text": message,
-            "parse_mode": "HTML"
-        }
-        response = requests.post(text_url, data=text_payload)
-        
-        # Nếu có đường dẫn ảnh, gửi ảnh
-        if image_path and os.path.exists(image_path):
-            image_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
-            with open(image_path, 'rb') as photo:
-                files = {'photo': photo}
-                image_payload = {
-                    "chat_id": TELEGRAM_CHAT_ID,
-                    "caption": "Ảnh đã chụp"
-                }
-                image_response = requests.post(image_url, data=image_payload, files=files)
-                
-        logging.info(f"Đã gửi thông báo Telegram: {message}")
-        return True
-    except Exception as e:
-        logging.error(f"Gửi thông báo Telegram thất bại: {str(e)}")
-        return False
 
 def can_send_notification(person_id, is_known=True):
     """Kiểm tra xem có thể gửi thông báo dựa trên khoảng thời gian không"""
@@ -79,7 +156,7 @@ def can_send_notification(person_id, is_known=True):
 def notify_recognized_person(name, user_id, confidence, image_path=None):
     """Thông báo về người được nhận diện"""
     if can_send_notification(user_id, is_known=True):
-        message = f"✅ <b>Người Được Nhận Diện</b>\nTên: {name}\nID: {user_id}\nĐộ Chính Xác: {confidence:.2f}\nThời Gian: {datetime.now().strftime('%H:%M:%S')}"
+        message = f"✅ <b>Người Được Nhận Diện</b>\nTên: {name}\nID: {user_id}\nĐộ Tin Cậy: {confidence:.2f}\nThời Gian: {datetime.now().strftime('%H:%M:%S')}"
         return send_telegram_notification(message, image_path)
     return False
 

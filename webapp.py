@@ -223,7 +223,7 @@ elif menu == "👥 Quản lý người dùng":
         with st.form("add_user"):
             col1, col2 = st.columns(2)
             with col1:
-                user_id = st.text_input("ID người dùng *", placeholder="VD: USER001")
+                user_id = st.text_input("ID người dùng *", placeholder="VD: 01")
             with col2:
                 user_name = st.text_input("Tên *", placeholder="VD: Nguyễn Văn A")
             
@@ -240,7 +240,7 @@ elif menu == "👥 Quản lý người dùng":
                     
                     if success:
                         show_success(f"Đã tạo người dùng {user_name} thành công!")
-                        time.sleep(1)
+                        time.sleep(3)
                         st.rerun()
                     else:
                         show_error(f"Lỗi: {response}")
@@ -285,7 +285,7 @@ elif menu == "👥 Quản lý người dùng":
                                 
                                 if success:
                                     show_success("Cập nhật thành công!")
-                                    time.sleep(1)
+                                    time.sleep(3)
                                     st.rerun()
                                 else:
                                     show_error(f"Lỗi: {response}")
@@ -297,7 +297,7 @@ elif menu == "👥 Quản lý người dùng":
                                 
                                 if success:
                                     show_success(f"Đã xóa {user_info['name']} thành công!")
-                                    time.sleep(1)
+                                    time.sleep(3)
                                     st.rerun()
                                 else:
                                     show_error(f"Lỗi: {response}")
@@ -389,7 +389,7 @@ elif menu == "📸 Ảnh khuôn mặt":
                             show_error("Không có ảnh nào được upload thành công!")
                         
                         if success_count > 0:
-                            time.sleep(1)
+                            time.sleep(10)
                             st.rerun()
             
             with tab2:
@@ -421,7 +421,7 @@ elif menu == "📸 Ảnh khuôn mặt":
                                 
                                 if success:
                                     show_success("Đã xóa ảnh!")
-                                    time.sleep(1)
+                                    time.sleep(3)
                                     st.rerun()
                                 else:
                                     show_error(f"Lỗi: {response}")
