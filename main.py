@@ -157,6 +157,7 @@ async def list_faces(user_id: str = Path(...)):
     face_images = get_user_face_images(user_id)
     return {"status": "success", "face_images": face_images, "total": len(face_images)}
 
+#Xóa ảnh khuôn mặt
 @app.delete("/faces/{image_id}")
 async def remove_face(image_id: int = Path(...)):
     success, message = delete_face_image(image_id)

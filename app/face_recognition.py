@@ -55,7 +55,8 @@ def load_face_database(user_face_data):
                             best_face = face
                     
                     if best_face is not None:
-                        embedding = best_face.embedding
+                        
+                        embedding = best_face.normed_embedding
                         
                         user_key = f"{user_id}_{name}"
                         if user_key not in face_db:
@@ -123,7 +124,7 @@ def process_frame(frame, face_database):
             try:
                 # Lấy thông tin khuôn mặt
                 bbox = face.bbox.astype(int)
-                embedding = face.embedding
+                embedding = face.normed_embedding
                 
                 x1, y1, x2, y2 = bbox
                 

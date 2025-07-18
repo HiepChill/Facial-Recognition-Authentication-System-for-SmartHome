@@ -111,7 +111,7 @@ def api_call(method, endpoint, data=None, files=None):
         return False, str(e)
 
 # Header
-st.title("🏠 Smart Home Security System")
+st.title("🏠 Hệ thống an ninh thông minh")
 st.write("---")
 
 # Kiểm tra trạng thái API server
@@ -361,13 +361,32 @@ elif menu == "📸 Ảnh khuôn mặt":
                         status.empty()
                         progress.empty()
                         
-                        # Hiển thị kết quả
-                        success_count = sum(1 for _, success, _ in results if success)
-                        show_success(f"Upload thành công {success_count}/{len(uploaded_files)} ảnh!")
+                        # Phân tích chi tiết kết quả
+                        success_count = 0
+                        error_count = 0
                         
-                        for filename, success, response in results:
-                            if not success:
-                                show_error(f"Lỗi {filename}: {response}")
+                        for filename, api_success, response in results:
+                            if api_success and response.get("status") == "success":
+                                # Kiểm tra chi tiết từng ảnh trong results
+                                file_results = response.get("results", [])
+                                for file_result in file_results:
+                                    if file_result.get("status") == "success":
+                                        success_count += 1
+                                    else:
+                                        error_count += 1
+                                        show_error(f"Lỗi {filename}: {file_result.get('message', 'Lỗi không xác định')}")
+                            else:
+                                error_count += 1
+                                show_error(f"Lỗi API {filename}: {response}")
+                        
+                        # Hiển thị thông báo tổng hợp
+                        total_files = len(uploaded_files)
+                        if success_count > 0:
+                            show_success(f"Upload thành công {success_count}/{total_files} ảnh!")
+                        if error_count > 0:
+                            show_error(f"Thất bại {error_count}/{total_files} ảnh!")
+                        if success_count == 0:
+                            show_error("Không có ảnh nào được upload thành công!")
                         
                         if success_count > 0:
                             time.sleep(1)

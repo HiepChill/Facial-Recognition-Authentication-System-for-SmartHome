@@ -163,13 +163,13 @@ def get_user_details(user_id):
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     cursor.execute("""
-    SELECT u.id, u.name, u.notes, u.created_at, u.updated_at,
-    COUNT(f.id) as image_count
-    FROM users u
-    LEFT JOIN face_images f ON u.id = f.user_id
-    WHERE u.id = ?
-    GROUP BY u.id
-    """, (user_id,))
+        SELECT u.id, u.name, u.notes, u.created_at, u.updated_at,
+        COUNT(f.id) as image_count
+        FROM users u
+        LEFT JOIN face_images f ON u.id = f.user_id
+        WHERE u.id = ?
+        GROUP BY u.id
+        """, (user_id,))
     user = cursor.fetchone()
     if user:
         user_dict = dict(user)
